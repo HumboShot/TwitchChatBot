@@ -36,16 +36,17 @@ namespace TwitchChatBot
         private Settings Settings;
 
         #region commands
+        private BaseCommands baseCommands;
         private CustomTextCommands customTextCommands;
         private HeistCommands heistCommands;
         #endregion
         public Bot()
         {
             Console.WriteLine("Starting Bot");
-            Task.Run(() => ConfidLiveMonitorAsync());
+            Task.Run(() => ConfigLiveMonitorAsync());
         }
 
-        private async void ConfidLiveMonitorAsync()
+        private async void ConfigLiveMonitorAsync()
         {
             API = new TwitchAPI();
             Client = new TwitchClient();
@@ -72,7 +73,7 @@ namespace TwitchChatBot
             ConnectionCredentials credentials = new ConnectionCredentials(Settings.BotConnectionDetails.UserName, Settings.BotConnectionDetails.OAuth);
 
             Client.Initialize(credentials, Settings.MonitoredChannels.FirstOrDefault());
-            Client.AddChatCommandIdentifier('!');
+            Client.AddChatCommandIdentifier(Settings.ChatCommandIdentifier);
 
             Client.OnLog += Client_OnLog;
             Client.OnJoinedChannel += Client_OnJoinedChannel;
@@ -108,18 +109,23 @@ namespace TwitchChatBot
 
         }
 
-        private void Client_OnChatCommandReceived(object sender, OnChatCommandReceivedArgs command)
+        private void Client_OnChatCommandReceived(object sender, OnChatCommandReceivedArgs args)
         {
-            Log.WriteCommand(command);
-            switch (command.Command.CommandText)
+            Log.WriteCommand(args);
+
+            switch (args.Command.CommandText.ToLower())
             {
-                case "heist":
+                case "ping":
+                    baseCommands.Ping(args.Command.ChatMessage.Channel);
                     break;
-                case "newCommand":
-                    customTextCommands.MakeNewCommand(command.Command.ArgumentsAsList[0], command.Command.ArgumentsAsString);
+                case "newcommand":
+                    customTextCommands.MakeNewCommand(args.Command.ChatMessage.Channel, args.Command.ArgumentsAsList[0], args.Command.ArgumentsAsString);
+                    break;
+                case "listcomands":
+                    customTextCommands.ListAllChannelCommands(args.Command.ChatMessage.Channel, Settings.ChatCommandIdentifier, args.Command.ChatMessage.Username, args.Command.ChatMessage.IsBroadcaster || args.Command.ChatMessage.IsModerator);
                     break;
                 default:
-                    customTextCommands.DoCommand(command);
+                    customTextCommands.DoCommand(args);
                     break;
             }
         }
@@ -137,6 +143,12 @@ namespace TwitchChatBot
         private void Client_OnMessageReceived(object sender, OnMessageReceivedArgs e)
         {
             Log.Write($"Message from {e.ChatMessage.Username}: {e.ChatMessage.Message}");
+            switch(e.ChatMessage.Message)
+            {
+                case "PogChamp":
+                    baseCommands.PogCounter(e.ChatMessage.Channel);
+                    break;
+            }
         }
 
         private void Client_OnJoinedChannel(object sender, OnJoinedChannelArgs e)
@@ -185,7 +197,8 @@ namespace TwitchChatBot
 
         private void SetupCommands()
         {
-            customTextCommands = new CustomTextCommands(Client);
+            baseCommands = new BaseCommands(Client, Log);
+            customTextCommands = new CustomTextCommands(Client, Log);
             heistCommands = new HeistCommands();
         }
     }
